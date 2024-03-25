@@ -3,7 +3,9 @@ package log
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"text/template"
@@ -14,6 +16,8 @@ import (
 	"github.com/grafana/regexp"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
+
+	"github.com/oschwald/geoip2-golang"
 )
 
 const (
@@ -70,6 +74,7 @@ var (
 		"unixToTime":       unixToTime,
 		"alignLeft":        alignLeft,
 		"alignRight":       alignRight,
+		"geoip":            geoip,
 	}
 
 	// sprig template functions
@@ -117,6 +122,8 @@ var (
 		"unixEpoch",
 		"default",
 	}
+
+	mmdb *geoip2.Reader
 )
 
 func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]interface{} {
@@ -185,6 +192,11 @@ func init() {
 		if function, ok := sprigFuncMap[v]; ok {
 			functionMap[v] = function
 		}
+	}
+
+	db, err := geoip2.Open(os.Getenv("MAXMIND_DB"))
+	if err == nil {
+		mmdb = db
 	}
 }
 
@@ -460,6 +472,16 @@ func alignRight(count int, src string) string {
 		return strings.Repeat(" ", pad) + src
 	}
 	return string(runes[l-count:])
+}
+
+func geoip(src string) *geoip2.City {
+	src = strings.TrimSpace(src)
+	ip := net.ParseIP(src)
+	if ip == nil {
+		return nil
+	}
+	record, _ := mmdb.City(ip)
+	return record
 }
 
 type Decolorizer struct{}
